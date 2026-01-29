@@ -1,4 +1,4 @@
-"""Audio file associated with timestamps."""
+"""Auxiliary file associated with timestamps."""
 
 from __future__ import annotations
 
@@ -9,29 +9,31 @@ if TYPE_CHECKING:
     from os import PathLike
     from pathlib import Path
 
-    import numpy as np
-    import pytz
 from math import floor
 
+import numpy as np
+import pandas as pd
+import pytz
 from pandas import Timedelta, Timestamp
 
-from osekit.core_api import audio_file_manager as afm
+from osekit.core_api import auxiliary_file_manager as afm
 from osekit.core_api.base_file import BaseFile
 
 
-class AudioFile(BaseFile):
-    """Audio file associated with timestamps."""
+class AuxiliaryFile(BaseFile):
+    """Auxiliary file associated with timestamps."""
 
-    supported_extensions: typing.ClassVar = [".wav", ".flac", ".mp3", ".mseed"]
+    supported_extensions: typing.ClassVar = [".nc", ".csv"]
 
     def __init__(
         self,
         path: PathLike | str,
+        timestamp_col : str | None = None,
         begin: Timestamp | None = None,
         strptime_format: str | list[str] | None = None,
         timezone: str | pytz.timezone | None = None,
     ) -> None:
-        """Initialize an ``AudioFile`` object with a path and a begin timestamp.
+        """Initialize an ``AuxiliaryFile`` object with a path and a begin timestamp.
 
         The begin timestamp can either be provided as a parameter
          or parsed from the filename according to the provided ``strptime_format``.
@@ -57,20 +59,23 @@ class AudioFile(BaseFile):
             to the specified timezone.
 
         """
+        if not begin and timestamp_col is not None:
+            begin = pd.read_csv(path, parse_dates=[timestamp_col]).iloc[0][timestamp_col]
+        else :
+            raise ValueError("Either specify begin timestamp or timestamp column")
         super().__init__(
             path=path,
             begin=begin,
             strptime_format=strptime_format,
             timezone=timezone,
         )
-        sample_rate, frames, channels = afm.info(path)
-        duration = frames / sample_rate
+        sample_rate, frames, nvars, duration = afm.info(path, timestamp_col)
         self.sample_rate = sample_rate
-        self.channels = channels
+        self.nvars = nvars
         self.end = self.begin + Timedelta(seconds=duration)
 
     def read(self, start: Timestamp, stop: Timestamp) -> np.ndarray:
-        """Return the audio data between start and stop from the file.
+        """Return the auxiliary data between start and stop from the file.
 
         Parameters
         ----------
@@ -117,8 +122,11 @@ class AudioFile(BaseFile):
             First and last frames of the data.
 
         """
-        start_sample = floor(((start - self.begin) * self.sample_rate).total_seconds())
-        stop_sample = round(((stop - self.begin) * self.sample_rate).total_seconds())
+        if np.isnan(self.sample_rate):
+            pass
+        else :
+            start_sample = floor(((start - self.begin) * self.sample_rate).total_seconds())
+            stop_sample = round(((stop - self.begin) * self.sample_rate).total_seconds())
         return start_sample, stop_sample
 
     def move(self, folder: Path) -> None:

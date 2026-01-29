@@ -6,19 +6,19 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from osekit.core_api.audio_file import AudioFile
+from osekit.core_api.auxiliary_file import AuxiliaryFile
 from osekit.core_api.base_item import BaseItem
 
 if TYPE_CHECKING:
     from pandas import Timestamp
 
 
-class AudioItem(BaseItem[AudioFile]):
+class AuxiliaryItem(BaseItem[AuxiliaryFile]):
     """``AudioItem`` corresponding to a portion of an ``AudioFile`` object."""
 
     def __init__(
         self,
-        file: AudioFile | None = None,
+        file: AuxiliaryFile | None = None,
         begin: Timestamp | None = None,
         end: Timestamp | None = None,
     ) -> None:

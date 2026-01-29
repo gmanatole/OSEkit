@@ -11,10 +11,10 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 import soundfile as sf
+from osekit.core_api.auxiliar_file import AuxiliaryFile
 from pandas import Timedelta, Timestamp
 
-from osekit.core_api.audio_file import AudioFile
-from osekit.core_api.audio_item import AudioItem
+from osekit.core_api.auxiliary_item import AuxiliaryItem
 from osekit.core_api.base_data import BaseData
 from osekit.core_api.instrument import Instrument
 from osekit.utils.audio_utils import Normalization, normalize, resample
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class AudioData(BaseData[AudioItem, AudioFile]):
+class AudioData(BaseData[AuxiliaryItem, AuxiliaryFile]):
     """``AudioData`` represent audio data scattered through different ``AudioFiles``.
 
     The ``AudioData`` has a collection of ``AudioItem``.
