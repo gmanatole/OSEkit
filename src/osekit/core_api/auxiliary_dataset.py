@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Literal, Self
 
-from osekit.core_api.audio_data import AudioData
-from osekit.core_api.audio_file import AudioFile
+from osekit.core_api.auxiliar_file import AuxiliaryFile
+
+from osekit.core_api.auxiliary_data import AuxiliaryData
 from osekit.core_api.base_dataset import BaseDataset
 from osekit.core_api.json_serializer import deserialize_json
 from osekit.utils.audio_utils import Normalization
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from osekit.core_api.instrument import Instrument
 
 
-class AudioDataset(BaseDataset[AudioData, AudioFile]):
+class AudioDataset(BaseDataset[AuxiliaryData, AuxiliaryFile]):
     """``AudioDataset`` is a collection of ``AudioData`` objects.
 
     ``AudioDataset`` is a collection of ``AudioData``, with methods
