@@ -2,7 +2,8 @@ import warnings
 from os import PathLike
 
 import numpy as np
-import pandas as pd
+import netCDF4 as nc
+### NETCDF or xarray ???
 
 
 class NetCDFBackend:
@@ -25,7 +26,8 @@ class NetCDFBackend:
         """Close the currently opened file."""
 
 
-    def info(self, path: PathLike | str, timestamp_col : str = "timestamps") -> tuple[int, int, int]:
+
+    def info(self, path: PathLike | str, timestamp_col : str = "timestamps") -> tuple[int, int, int, int]:
         """Return the sample rate, number of frames and channels of the CSV file.
 
         Parameters
@@ -39,20 +41,23 @@ class NetCDFBackend:
             Sample rate, number of frames and channels of the MSEED file.
 
         """
-        file_content = pd.read_csv(path)
+        file_content = nc.Dataset(path)
 
-        self.columns = list(file_content.columns)
+        self.columns = list(file_content.variables.keys())
 
-        sample_rate = file_content[timestamp_col].diff().dt.total_seconds().to_numpy()[1:]
+        sample_rate = file_content[timestamp_col][:].filled(np.nan).diff().dt.total_seconds().to_numpy()[1:]
         if len(np.unique(sample_rate)) != 1:
             msg = "Inconsistent sampling rates in CSV file."
             warnings.warn(msg)
-
+        else :
+            sample_rate = int(np.unique(sample_rate).mean())
+        duration = (file_content[timestamp_col].iloc[-1] - file_content[timestamp_col].iloc[0]).total_seconds()
         frames = len(file_content)
         return (
             int(np.unique(sample_rate).mean()),
             frames,
             len(self.columns) - 1,
+            int(duration)
         )
 
     def read(
@@ -78,9 +83,9 @@ class NetCDFBackend:
             A ``(channel * frames)`` array containing the MSEED data.
 
         """
-        file_content = pd.read_csv(path)
-        data = file_content[self.var_name].to_numpy()
+        file_content = nc.Dataset(path)
+        data = file_content[self.var_name][:].filled(np.nan)
 
-        self.columns = list(file_content.columns)
+        self.columns = list(file_content.variables.keys())
 
         return data[start:stop]

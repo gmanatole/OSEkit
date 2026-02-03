@@ -13,13 +13,13 @@ class CSVBackend:
 
     @property
     def variables(self) -> list:
-        return list(None)
+        return self._variables
 
     @variables.setter
     def variables(self, var = list[str] | str) -> None:
         if var not in self.columns :
             raise ValueError(f"Variable {var} is not in the CSV file.")
-        self._variables = list(var)
+        self._variables = [var] if isinstance(var, str) else var
 
     def close(self) -> None:
         """Close the currently opened file."""
