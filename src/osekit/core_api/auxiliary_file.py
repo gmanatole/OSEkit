@@ -69,6 +69,7 @@ class AuxiliaryFile(BaseFile):
             strptime_format=strptime_format,
             timezone=timezone,
         )
+        self.timestamp_col = timestamp_col
         sample_rate, frames, nvars, duration = afm.info(path, timestamp_col)
         self.sample_rate = sample_rate
         self.nvars = nvars
@@ -123,7 +124,9 @@ class AuxiliaryFile(BaseFile):
 
         """
         if np.isnan(self.sample_rate):
-            pass
+            timestamps = afm.read_timestamps(self.path, timestamp_col=self.timestamp_col)
+            start_sample = timestamps.searchsorted(start) - 1
+            stop_sample = timestamps.searchsorted(stop)
         else :
             start_sample = floor(((start - self.begin) * self.sample_rate).total_seconds())
             stop_sample = round(((stop - self.begin) * self.sample_rate).total_seconds())

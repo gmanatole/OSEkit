@@ -14,8 +14,9 @@ from osekit.auxiliary_backend.netcdf_backend import NetCDFBackend
 if TYPE_CHECKING:
     from os import PathLike
 
-    import numpy as np
-
+import pandas as pd
+import numpy as np
+import pytz
 
 class AuxiliaryFileManager:
     """Auxiliary File Manager which keeps an auxiliary file open until a request in another file is made."""
@@ -41,9 +42,27 @@ class AuxiliaryFileManager:
 
         return self._csv
 
-    def info(self, path: PathLike | str, timestamp_col : str) -> tuple[int, int, int]:
+    def info(self, path: PathLike | str, timestamp_col : str, timezone: str | pytz.timezone | None = None) -> tuple[int, int, int]:
         """Return the sample rate, number of frames and number of variables of the auxiliary file.
 
+        Parameters
+        ----------
+        path: PathLike | str
+            Path to the audio file.
+        timestamp_col: str
+            Name of the timestamp column.
+        timezone : str | pytz.timezone | None
+            Timezone of the timestamp column.
+
+        Returns
+        -------
+        tuple[int,int,int]:
+            Sample rate, number of frames and number of variables of the auxiliary file.
+        """
+        return self._backend(path).info(path, timestamp_col)
+
+    def read_timestamps(self, path : PathLike | str, timestamp_col : str) -> pd.Series :
+        """Read the timestamps of an auxiliary file.
         Parameters
         ----------
         path: PathLike | str
@@ -53,11 +72,10 @@ class AuxiliaryFileManager:
 
         Returns
         -------
-        tuple[int,int,int]:
-            Sample rate, number of frames and number of variables of the auxiliary file.
-
+        pd.Series:
+            pd.Series containing the timestamps of the auxiliary file.
         """
-        return self._backend(path).info(path, timestamp_col)
+        return self._backend(path).read_timestamps(path, timestamp_col)
 
     def read(
         self,

@@ -59,6 +59,23 @@ class CSVBackend:
             int(duration),
         )
 
+    def read_timestamps(self, path: PathLike | str, timestamp_col : str) -> pd.Series :
+        """Return the timestamp column of auxiliary file.
+
+        Parameters
+        ----------
+        path: PathLike | str
+            Path to the auxiliary file.
+        timestamp_col: str
+            Name of the timestamp column.
+        Returns
+        -------
+        pd.Series:
+            pd.Series containing the timestamp column.
+        """
+        file_content = pd.read_csv(path, parse_dates = [timestamp_col])
+        return file_content[timestamp_col]
+
     def read(
         self,
         path: PathLike | str,
@@ -83,7 +100,7 @@ class CSVBackend:
 
         """
         file_content = pd.read_csv(path)
-        data = file_content[self.var_name].to_numpy()
+        data = file_content[self.variables].to_numpy()
 
         self.columns = list(file_content.columns)
 
