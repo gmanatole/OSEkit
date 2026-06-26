@@ -7,6 +7,8 @@ import copy
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
+import pandas as pd
+
 if TYPE_CHECKING:
     from pandas import Timedelta, Timestamp
 
@@ -37,7 +39,7 @@ class Event:
 
     @begin.setter
     def begin(self, value: Timestamp) -> None:
-        if hasattr(self, "_end") and value > self._end:
+        if hasattr(self, "_end") and self._compare_timestamp(value, self._end) > 0:
             msg = f"Invalid Event: `end` ({self._end}) must be greater than `begin` ({value})."  # noqa: E501
             raise ValueError(msg)
         self._begin = value
@@ -49,7 +51,7 @@ class Event:
 
     @end.setter
     def end(self, value: Timestamp) -> None:
-        if hasattr(self, "_begin") and value < self._begin:
+        if hasattr(self, "_begin") and self._compare_timestamp(value, self._begin) < 0:
             msg = f"Invalid Event: `end` ({value}) must be greater than `begin` ({self._begin})."  # noqa: E501
             raise ValueError(msg)
         self._end = value
@@ -58,6 +60,31 @@ class Event:
     def duration(self) -> Timedelta:
         """Duration of the event."""
         return self.end - self.begin
+
+    @staticmethod
+    def _align_timestamp(timestamp: Timestamp, reference: Timestamp) -> Timestamp:
+        """Return ``timestamp`` expressed in the timezone of ``reference``."""
+        timestamp = pd.Timestamp(timestamp)
+        reference = pd.Timestamp(reference)
+        reference_tz = reference.tz
+        if reference_tz is None:
+            if timestamp.tz is not None:
+                return timestamp.tz_localize(None)
+            return timestamp
+        if timestamp.tz is None:
+            return timestamp.tz_localize(reference_tz)
+        return timestamp.tz_convert(reference_tz)
+
+    @classmethod
+    def _compare_timestamp(cls, timestamp: Timestamp, reference: Timestamp) -> int:
+        """Compare two timestamps after aligning them to one timezone."""
+        aligned_timestamp = cls._align_timestamp(timestamp, reference)
+        reference_timestamp = pd.Timestamp(reference)
+        if aligned_timestamp < reference_timestamp:
+            return -1
+        if aligned_timestamp > reference_timestamp:
+            return 1
+        return 0
 
     def __repr__(self) -> str:
         """Overwrite repr."""
@@ -86,7 +113,9 @@ class Event:
         False
 
         """  # noqa: E501
-        return self.begin < other.end and self.end > other.begin
+        other_begin = self._align_timestamp(other.begin, self.begin)
+        other_end = self._align_timestamp(other.end, self.end)
+        return self.begin < other_end and self.end > other_begin
 
     def get_overlapping_events(self, events: list[TEvent]) -> list[TEvent]:
         """Return a list of events that overlap with the current event.

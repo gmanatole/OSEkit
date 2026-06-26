@@ -15,6 +15,8 @@ import typing
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
+import pandas as pd
+
 from osekit import config
 from osekit.config import DPDEFAULT, resample_quality_settings
 from osekit.core import audio_file_manager as afm
@@ -62,7 +64,7 @@ class Project:
         self,
         folder: Path,
         strptime_format: str | list[str] | None,
-        gps_coordinates: str | list | tuple = (0, 0),
+        gps_coordinates: str | list | tuple | Path = (0, 0),
         depth: float = 0.0,
         timezone: str | None = None,
         outputs: dict | None = None,
@@ -82,8 +84,12 @@ class Project:
             If ``None``, the first audio file of the folder will start
             at ``first_file_begin``, and each following file will start
             at the end of the previous one.
-        gps_coordinates: str | list | tuple
-            GPS coordinates of the location were audio files were recorded.
+        gps_coordinates: str | list | tuple | Path
+            GPS coordinates of the location where audio files were recorded.
+            If a CSV file path is provided, the file is copied into the audio
+            dataset ``auxiliary`` folder, ``lat``/``lon`` are normalized to
+            ``latitude``/``longitude`` when needed, and the project JSON stores
+            ``"mobile"``.
         depth: float
             Depth at which the audio files were recorded.
         timezone: str | None
@@ -111,6 +117,9 @@ class Project:
         self.folder = folder
         self.strptime_format = strptime_format
         self.gps_coordinates = gps_coordinates
+        self._mobile_gps_coordinates_path = self._get_mobile_gps_coordinates_path(
+            gps_coordinates,
+        )
         self.depth = depth
         self.timezone = timezone
         self.outputs = outputs if outputs is not None else {}
@@ -138,6 +147,82 @@ class Project:
         """Return the list of the names of the transforms ran with this ``Project``."""
         return list({dataset["transform"] for dataset in self.outputs.values()})
 
+    def _get_mobile_gps_coordinates_path(
+        self,
+        gps_coordinates: str | list | tuple | Path,
+    ) -> Path | None:
+        if isinstance(gps_coordinates, Path):
+            candidate = gps_coordinates
+        elif isinstance(gps_coordinates, str):
+            candidate = Path(gps_coordinates)
+        else:
+            return None
+
+        return candidate if candidate.suffix.lower() == ".csv" else None
+
+    def _mobile_gps_source(self) -> Path | None:
+        if self._mobile_gps_coordinates_path is None:
+            return None
+
+        dataset_candidate = self.folder / self._mobile_gps_coordinates_path.name
+        if dataset_candidate.exists():
+            return dataset_candidate
+
+        if (
+            self._mobile_gps_coordinates_path.parent == self.folder
+            and self._mobile_gps_coordinates_path.exists()
+        ):
+            return self._mobile_gps_coordinates_path
+
+        return None
+
+    @staticmethod
+    def _normalize_mobile_gps_frame(frame: pd.DataFrame) -> pd.DataFrame:
+        columns = set(frame.columns)
+        if {"lat", "lon"} <= columns:
+            if {"latitude", "longitude"} & columns:
+                msg = (
+                    "GPS CSV must not contain both 'lat'/'lon' and "
+                    "'latitude'/'longitude' columns."
+                )
+                raise ValueError(msg)
+            frame = frame.rename(columns={"lat": "latitude", "lon": "longitude"})
+        elif not {"latitude", "longitude"} <= columns:
+            msg = (
+                "GPS CSV must contain either 'lat'/'lon' or "
+                "'latitude'/'longitude' columns."
+            )
+            raise ValueError(msg)
+
+        time_candidates = {"timestamp", "timestamps", "time", "datetime", "date"}
+        if not time_candidates & columns:
+            msg = (
+                "GPS CSV must contain a timestamp column such as "
+                "'timestamp', 'time', 'datetime', or 'date'."
+            )
+            raise ValueError(msg)
+        return frame
+
+    def _write_mobile_gps_coordinates(
+        self,
+        audio_dataset: AudioDataset,
+        source: Path,
+    ) -> None:
+        frame = pd.read_csv(source)
+        frame = self._normalize_mobile_gps_frame(frame)
+
+        auxiliary_folder = audio_dataset.folder / "auxiliary"
+        auxiliary_folder.mkdir(parents=True, exist_ok=True)
+        destination = auxiliary_folder / source.name
+        frame.to_csv(destination, index=False)
+
+        if source.exists():
+            source.unlink()
+
+        self.gps_coordinates = "mobile"
+        audio_dataset.gps_coordinates = "mobile"
+        self._mobile_gps_coordinates_path = None
+
     def build(
         self,
     ) -> None:
@@ -161,6 +246,7 @@ class Project:
             name="original",
             instrument=self.instrument,
         )
+        ads.gps_coordinates = self.gps_coordinates
 
         self.outputs[ads.name] = {
             "class": type(ads).__name__,
@@ -172,13 +258,26 @@ class Project:
         afm.close()
         for folder in self.SUBFOLDERS.values():
             (self.folder / folder).mkdir(exist_ok=True)
+        mobile_gps_source = self._mobile_gps_source()
+        if self._mobile_gps_coordinates_path is not None and mobile_gps_source is None:
+            msg = (
+                "The GPS coordinates CSV was not found in the project folder. "
+                "It must be present when building the project."
+            )
+            raise FileNotFoundError(msg)
         move_tree(
             source=self.folder,
             destination=self.folder / self.SUBFOLDERS["other"],
             excluded_paths={file.path for file in ads.files}
-            | {self.folder / folder for folder in self.SUBFOLDERS.values()},
+            | {self.folder / folder for folder in self.SUBFOLDERS.values()}
+            | ({mobile_gps_source} if mobile_gps_source is not None else set()),
         )
         self._sort_dataset(ads)
+        if mobile_gps_source is not None:
+            self._write_mobile_gps_coordinates(
+                audio_dataset=ads,
+                source=mobile_gps_source,
+            )
         ads.write_json(ads.folder)
         self.write_json()
 
@@ -211,7 +310,14 @@ class Project:
         if not self.folder.exists():
             self.folder.mkdir(mode=DPDEFAULT)
 
-        for file in map(Path, files):
+        files_to_transfer = list(dict.fromkeys(map(Path, files)))
+        mobile_gps_path = self._mobile_gps_coordinates_path
+        if (
+            mobile_gps_path is not None and mobile_gps_path not in files_to_transfer
+        ):
+            files_to_transfer.append(mobile_gps_path)
+
+        for file in files_to_transfer:
             destination = self.folder / file.name
             if move_files:
                 file.replace(destination)
@@ -328,6 +434,8 @@ class Project:
 
         if transform.is_spectro:
             ads.suffix = "audio"
+
+        ads.gps_coordinates = self.gps_coordinates
 
         return ads
 
@@ -810,6 +918,11 @@ class Project:
             The serialized dictionary representing the project.
 
         """
+        gps_coordinates = self.gps_coordinates
+        if self._mobile_gps_coordinates_path is not None:
+            gps_coordinates = "mobile"
+        elif isinstance(gps_coordinates, Path):
+            gps_coordinates = str(gps_coordinates)
         return {
             "outputs": {
                 name: {
@@ -825,7 +938,7 @@ class Project:
                 None if self.instrument is None else self.instrument.to_dict()
             ),
             "depth": self.depth,
-            "gps_coordinates": self.gps_coordinates,
+            "gps_coordinates": gps_coordinates,
             "strptime_format": self.strptime_format,
             "timezone": self.timezone,
         }
@@ -918,6 +1031,8 @@ class Project:
             output_dataset["dataset"] = output_dataset_class.from_json(
                 output_dataset["dataset"],
             )
+        if isinstance(output_dataset["dataset"], AudioDataset):
+            output_dataset["dataset"].gps_coordinates = self.gps_coordinates
         return output_dataset["dataset"]
 
 

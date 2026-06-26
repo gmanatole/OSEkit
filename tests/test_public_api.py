@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import itertools
 from contextlib import AbstractContextManager, nullcontext
 from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from pandas import Timedelta, Timestamp
 from scipy.signal import ShortTimeFFT
@@ -220,7 +222,6 @@ def test_project_build(
     audio_files: pytest.fixture,
     other_files: list[str],
     expected_audio_events: list[Event],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, request = audio_files
     file_timezone = (
@@ -309,6 +310,86 @@ def test_project_build(
     assert sorted(str(file) for file in tmp_path.rglob("*")) == sorted(
         str(file) for file in files_before_build
     )
+
+
+def test_project_build_with_mobile_gps_csv(tmp_path: Path, audio_files: pytest.fixture) -> None:
+    project_timezone = None
+    files_timestamp_format = TIMESTAMP_FORMAT_EXPORTED_FILES_UNLOCALIZED
+
+    gps_csv = tmp_path / "gps.csv"
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                Timestamp("2024-01-01 12:00:00"),
+                periods=3,
+                freq="1s",
+            ),
+            "lat": [48.1, 48.2, 48.3],
+            "lon": [-4.9, -4.8, -4.7],
+        },
+    ).to_csv(gps_csv, index=False)
+
+    project = Project(
+        folder=tmp_path,
+        strptime_format=files_timestamp_format,
+        timezone=project_timezone,
+        gps_coordinates=gps_csv,
+    )
+
+    project.build()
+
+    auxiliary_csv = (
+        tmp_path
+        / "data"
+        / "audio"
+        / "original"
+        / "auxiliary"
+        / gps_csv.name
+    )
+    assert auxiliary_csv.exists()
+    assert not gps_csv.exists()
+
+    normalized_gps = pd.read_csv(auxiliary_csv)
+    assert {"timestamp", "latitude", "longitude"} <= set(normalized_gps.columns)
+    assert "lat" not in normalized_gps.columns
+    assert "lon" not in normalized_gps.columns
+    assert normalized_gps.loc[0, "latitude"] == pytest.approx(48.1)
+    assert normalized_gps.loc[0, "longitude"] == pytest.approx(-4.9)
+
+    project_json = json.loads((tmp_path / "project.json").read_text())
+    assert project_json["gps_coordinates"] == "mobile"
+    assert project.gps_coordinates == "mobile"
+    assert Project.from_json(tmp_path / "project.json").gps_coordinates == "mobile"
+
+
+def test_project_build_with_mobile_gps_csv_requires_lat_and_lon(
+    tmp_path: Path,
+    audio_files: pytest.fixture,
+) -> None:
+    project_timezone = None
+    files_timestamp_format = TIMESTAMP_FORMAT_EXPORTED_FILES_UNLOCALIZED
+
+    gps_csv = tmp_path / "gps.csv"
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                Timestamp("2024-01-01 12:00:00"),
+                periods=3,
+                freq="1s",
+            ),
+            "lat": [48.1, 48.2, 48.3],
+        },
+    ).to_csv(gps_csv, index=False)
+
+    project = Project(
+        folder=tmp_path,
+        strptime_format=files_timestamp_format,
+        timezone=project_timezone,
+        gps_coordinates=gps_csv,
+    )
+
+    with pytest.raises(ValueError, match=r"lat.*lon|lon.*lat"):
+        project.build()
 
 
 @pytest.mark.parametrize(
@@ -451,7 +532,8 @@ def test_reshape(
 
     expected_ads_name = (
         transform.name
-        or f"{expected_ads.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_UNLOCALIZED)}"
+        if transform.name
+        else f"{expected_ads.begin.strftime(TIMESTAMP_FORMAT_EXPORTED_FILES_UNLOCALIZED)}"
     )
 
     # The new dataset should be added to the outputs property
@@ -473,7 +555,8 @@ def test_reshape(
     # ads folder should match the ads name
     ads_folder_name = (
         transform.name
-        or f"{round(ads.data_duration.total_seconds())}_{ads.sample_rate}"
+        if transform.name
+        else f"{round(ads.data_duration.total_seconds())}_{ads.sample_rate}"
     )
     assert ads.folder.name == ads_folder_name
 

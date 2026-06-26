@@ -55,6 +55,12 @@ In the ``docs/source/_static/sample_audio/timestamped`` folder, files are just n
 
     Compute, plot and export a **L**\ ong-\ **T**\ erm **A**\ verage **S**\ pectrum (**LTAS**).
 
+===========
+
+.. topic:: :doc:`Estimate surface wind speed <example_wind_pipeline>`
+
+    End-to-end example: build an audio dataset, compute spectrograms, join auxiliary wind speed, and fit/predict surface wind speed.
+
 .. toctree ::
     :hidden:
 
@@ -64,3 +70,4 @@ In the ``docs/source/_static/sample_audio/timestamped`` folder, files are just n
     example_multiple_spectrograms
     example_multiple_spectrograms_id
     example_ltas
+    example_wind_pipeline

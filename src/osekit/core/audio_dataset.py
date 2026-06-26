@@ -66,6 +66,7 @@ class AudioDataset(BaseDataset[AudioData, AudioFile]):
                 (d.instrument for d in data if d.instrument is not None),
                 None,
             )
+        self.gps_coordinates: object | None = None
 
     @property
     def sample_rate(self) -> set[float] | float:

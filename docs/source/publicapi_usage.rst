@@ -427,3 +427,30 @@ Resetting a ``Project``
 
 The :meth:`osekit.public.project.Project.reset` method **resets the project's folder** to its initial state.
 All exported outputs ans json files will be removed, and the folder will be back to its state :ref:`before building the project <build>`.
+
+Estimating surface wind speed
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you already have a transformed :class:`osekit.core.spectro_dataset.SpectroDataset`
+and the temporally aligned auxiliary dataset containing the target wind-speed column,
+you can fit a compact empirical estimator directly on those aligned windows:
+
+.. code-block:: python
+
+    from osekit.public.wind import SurfaceWindEstimator
+
+    estimator = SurfaceWindEstimator(
+        method="Pensieri_low",
+        frequency=8_000,  # Select a spectrogram frequency bin available in your data
+        wind_speed_column="wind_speed_insitu",
+    )
+
+    frame, output_path = estimator.export(
+        spectro_dataset=sds,
+        auxiliary_dataset=auxiliary_dataset,
+        folder=auxiliary_dataset.folder,
+        filename="surface_wind_speed",
+    )
+
+    # ``frame`` contains the aligned timestamps, acoustic feature and predicted wind speed
+    # ``output_path`` points to the CSV written inside the auxiliary folder
